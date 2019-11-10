@@ -36,18 +36,27 @@ BTN_CAPTION_SELECT_DIR     = 'Select Directory'
 BTN_CAPTION_START_ANALYSIS = 'Start Analysis'
 BTN_CAPTION_STOP_ANALYSIS  = 'Stop Analysis'
 
+CONF_FILE_NAME        = '.file_compare.json'
 
-CONF_FILE_NAME='.file_compare.json'
+CONF_FLD_WIDTH        = 'width'
+CONF_FLD_HEIGHT       = 'height'
+CONF_FLD_POS_X        = 'x'
+CONF_FLD_POS_Y        = 'y'
+CONF_FLD_PROJECT_FILE = 'project_file'
+CONF_FLD_COMPARE_DIR  = 'compare_dir'
 
 HASH_CALC_CHUNK_SIZE = 4096
 
 LOG_CMD_CLEAR            = 'CLEAR'
 LOG_TEXT_ANALYZING_FILE  = 'Analyzing: %s'
 LOG_TEXT_CALCULATED_HASH = 'Calculated Hash: %s'
-LOG_TEXT_FINISHED        = '\n------------------------------ FINISHED -------------------------------\n'
+LOG_TEXT_FINISHED        = '\n------------------------------ FINISHED '\
+                           '-------------------------------\n'
 LOG_TEXT_HASH            = 'Hash: %s'
+LOG_TEXT_NO_DUPLICATE    = 'No duplicte files found!'
 LOG_TEXT_TAB             = '    %s'
-LOG_TEXT_WARNING         = '\n WARNING: These files are 1-(2^-128) * 100 percent equal \n'
+LOG_TEXT_WARNING         = '\n WARNING: These files are 1-(2^-128) * 100 '\
+                           'percent equal \n'
 
 WINDOW_TITLE_MAIN     = 'Find Duplicate Files'
 WINDOW_TITLE_ANALYSIS = 'Analysis'
@@ -76,41 +85,106 @@ class FileRecord(object):
 		self.size = os.path.getsize(path)
 
 class FileAnalysis(QThread):
+	"""
+
+	Main Thread to run file scan while keeping interactivity
+
+	"""
+	# Signal to log info for user
 	log_line = pyqtSignal(str)
+	# Signal to control text-box
 	log_cmd = pyqtSignal(str)
+	# Sihnal to report status if processed items
 	set_proc_percent = pyqtSignal(int)
 
 	def __init__(self, parent, idir, ofile):
+		"""
+
+		Constructor of object
+
+		@parent: parent Qt Object required by QT Framework
+		@idir:   directory to be scanned
+		@ofile:  json file where result is written
+
+		"""
 		super(FileAnalysis, self).__init__(parent)
 		self._idir = idir
 		self._ofile = ofile
+		# bytes processed
 		self._processed_bytes = 0
+		# total amount of bytes to be processed
 		self._total_bytes = 0;
 
 	def _get_processed_percent(self):
+		"""
+
+		Function to calculate the completion precentage. The Max value of
+		QProgressBar is not used as file-size might exceed the max size the
+		continer can handle.
+
+		"""
 		return int(self._processed_bytes * 100 / self._total_bytes)
 
 	def _get_hash(self, file_name):
-		m = hashlib.md5()
-		psave = self._processed_bytes
-		with open(file_name, 'rb') as f:
-			for chunk in iter(lambda: f.read(HASH_CALC_CHUNK_SIZE), b""):
-				m.update(chunk)
-				self._processed_bytes+=len(chunk)
-				self.set_proc_percent.emit(self._get_processed_percent())
-				self.yieldCurrentThread()
+		"""
 
+		Function to calculate an md5 hash on the file content.
+
+		@file_name: Name o the file
+
+		"""
+		m = hashlib.md5()
+		"""
+		
+		Let's save the value of processed bytes. This is restored after the
+		file is processed. This is needed for multiple reason:
+		    1.) if error happens during processing the file the rest of
+		        the processing shows the correct value
+		    2.) the interactivity of the form is increased as the progress 
+		        bar is updated continously.
+
+		"""
+		psave = self._processed_bytes
+		try:
+			with open(file_name, 'rb') as f:
+				# read the file in 4K chunks
+				for chunk in iter(lambda: f.read(HASH_CALC_CHUNK_SIZE), b""):
+					m.update(chunk)
+					# update processed_bytes
+					self._processed_bytes+=len(chunk)
+					# Communicate  processing status to ProgressBar
+					self.set_proc_percent.emit(self._get_processed_percent())
+					# Call a yield, so other events can be processed
+					self.yieldCurrentThread()
+		except Exception as e:
+			# TODO: Add proper exception handling. Error pop-up window
+			Dbug('Erro processing file: %s', file_name)
+
+		"""
+		 
+		 Restore _processed_bytes. In case error happened. the value is updated
+		 in the outer loop too.
+
+		 """
 		self._processed_bytes = psave
 
 		return m.hexdigest()
 
 	def _find_files(self):
+		"""
+
+		Find all file-names in the given directory. Also get file-siz info so
+		progess bar can be calculated.
+
+		"""
 		fname = os.path.join(self._idir, '**')
 		files_list = []
 		for f in glob.glob(fname, recursive=True):
+			# No support for symlinks yet
 			if os.path.islink(f):
 				continue
 
+			# Check if file found, as glob will mention directories too
 			if os.path.isfile(f):
 				filed = FileRecord(f)
 				files_list.append(filed)
@@ -119,46 +193,92 @@ class FileAnalysis(QThread):
 		return files_list
 
 	def _build_file_compare_db(self, files_list):
+		"""
+
+		Function to calculate md5 hash on all files. Creates a dictionary, where
+		the md5 hash of the ile content is th key and a list of filenames are
+		assigned to it. Example:
+
+		file_compare_db = { 'asghha28238hhj' : [ 'file1', 'file2'],
+		                    '62872ksakajs81' : [ 'file3'] }
+
+		If an entry has more than one file in the list, it means that they are
+		equal. 2^-128 chance that they are different
+
+		@files_list: list of FileRecord objects
+
+		"""
 		files_db = {}
 		for filed in files_list:
 			self.log_line.emit(LOG_TEXT_ANALYZING_FILE % str(filed.path))
-			file_hash = self._get_hash(filed.path)
 			
-			fh_key = str(file_hash)
+			fh_key = self._get_hash(filed.path)
 			self.log_line.emit(LOG_TEXT_CALCULATED_HASH % fh_key)
+			
+			# get the list for md5 hash, or init to to empty list
 			flist = files_db.get(fh_key, [])
 			flist.append(str(filed.path)) 
 			files_db[fh_key] = flist
 			
+			# update progress bar
 			self._processed_bytes+=filed.size
 			self.set_proc_percent.emit(self._get_processed_percent())
 
 		return files_db;
 
 	def _generate_duplicate_report(self, files_db):
+		"""
+
+		Search the database of files and build a sictionary of duplicate files
+
+		@files_db: a dictionary of file infomation. For format see: 
+		           _build_file_compare_db
+		
+		"""
 		dup_files = {}
 		for key, file_list in files_db.items():
+			# If more than 1 file in the list then there are duplicates
 			if len(file_list) > 1:
 				self.log_line.emit(LOG_TEXT_HASH %key)
 				dup_files[key] = file_list
 				for filename in file_list:
 					self.log_line.emit(LOG_TEXT_TAB % filename)
 
+		if not bool(dup_files):
+			self.log_line.emit(LOG_TEXT_NO_DUPLICATE)
+
 		return dup_files
 
 	def _save_duplicate_files_report(self, duplicate_files):
+		"""
+
+		Function to dump the duplicate_file informmation to a JSON file
+
+		@duplicate_files: dictionary of duplicate files
+
+		"""
 		with open(self._ofile, 'w') as fp:
 			json.dump(duplicate_files, fp, indent=4, sort_keys=True)
 	
 	def run(self):
+		"""
+
+		Main thread to run the actual analysis.
+
+		"""
+		# Find files in directory
 		files_list = self._find_files()
+		# Calculate md5 hash on files to detect duplcates
 		files_db = self._build_file_compare_db(files_list)
 		
+		# Cleat reported information before finishing the report for dup files
 		self.log_cmd.emit(LOG_CMD_CLEAR)
 		self.log_line.emit(LOG_TEXT_FINISHED)
 		self.log_line.emit(LOG_TEXT_WARNING)
 
+		# Report all duplicated files
 		dup_files_report = self._generate_duplicate_report(files_db)
+		# Save duplicated files into JSON file
 		self._save_duplicate_files_report(dup_files_report)
 
 		while True:
@@ -220,20 +340,21 @@ class InputDataPanel(QWidget):
 		self._config = {}
 		with open(conf_file) as fp:
 			self._config = json.load(fp)
-			self.move(self._config.get('x', 100), self._config.get('y',100))
-			self.resize(self._config.get('width',250), self._config.get('height',50))
-			self.project_file.setText(self._config.get('project_file', ''))
-			self.compare_dir.setText(self._config.get('compare_dir', ''))
+			self.move(self._config.get(CONF_FLD_POS_X, 100), self._config.get(CONF_FLD_POS_Y,100))
+			self.resize(self._config.get(CONF_FLD_WIDTH,250), self._config.get(CONF_FLD_HEIGHT,50))
+			self.project_file.setText(self._config.get(CONF_FLD_PROJECT_FILE, ''))
+			self.compare_dir.setText(self._config.get(CONF_FLD_COMPARE_DIR, ''))
 
 	def _save_config(self):
 		home = Path.home()
 		conf_file = os.path.join(home, CONF_FILE_NAME)
-		self._config['width'] = self.width()
-		self._config['height'] = self.height()
-		self._config['x'] = self.pos().x()
-		self._config['y'] = self.pos().y();
-		self._config['project_file'] = self.project_file.text()
-		self._config['compare_dir'] = self.compare_dir.text()
+
+		self._config[CONF_FLD_WIDTH] = self.width()
+		self._config[CONF_FLD_HEIGHT] = self.height()
+		self._config[CONF_FLD_POS_X] = self.pos().x()
+		self._config[CONF_FLD_POS_Y] = self.pos().y();
+		self._config[CONF_FLD_PROJECT_FILE] = self.project_file.text()
+		self._config[CONF_FLD_COMPARE_DIR] = self.compare_dir.text()
 		with open(conf_file, 'w') as fp:
 			json.dump(self._config, fp)
 	
