@@ -28,8 +28,8 @@ import time
 from pathlib import Path
 import os
 import json
-import glob
 import hashlib
+import pathlib
 
 BTN_CAPTION_SELECT_FILE    = 'Select File'
 BTN_CAPTION_SELECT_DIR     = 'Select Directory'
@@ -53,6 +53,8 @@ LOG_TEXT_CALCULATED_HASH = 'Calculated Hash: %s'
 LOG_TEXT_FINISHED        = '\n------------------------------ FINISHED '\
                            '-------------------------------\n'
 LOG_TEXT_HASH            = 'Hash: %s'
+LOG_TEXT_FINDING_FILES   = 'Findind files...'
+LOG_TEXT_FILE_FOUND      = 'File Found %s'
 LOG_TEXT_NO_DUPLICATE    = 'No duplicte files found!'
 LOG_TEXT_TAB             = '    %s'
 LOG_TEXT_WARNING         = '\n WARNING: These files are 1-(2^-128) * 100 '\
@@ -83,6 +85,23 @@ class FileRecord(object):
 	def __init__(self, path):
 		self.path = path
 		self.size = os.path.getsize(path)
+
+def alliter(p):
+	"""
+
+	Helper function to iterate over Pathlib strctures while
+	providing interactivity
+
+	"""
+	yield p
+	try:
+		for sub in p.iterdir():
+			if sub.is_dir():
+				yield from alliter(sub)
+			else:
+				yield sub
+	except Exception as e:
+		Dbg("Error processing file")
 
 class FileAnalysis(QThread):
 	"""
@@ -179,16 +198,19 @@ class FileAnalysis(QThread):
 		"""
 		fname = os.path.join(self._idir, '**')
 		files_list = []
-		for f in glob.glob(fname, recursive=True):
+		for f in alliter(pathlib.Path(self._idir)):
 			# No support for symlinks yet
 			if os.path.islink(f):
 				continue
 
 			# Check if file found, as glob will mention directories too
 			if os.path.isfile(f):
+				self.log_line.emit(LOG_TEXT_FILE_FOUND % f)
 				filed = FileRecord(f)
 				files_list.append(filed)
 				self._total_bytes+=filed.size
+				# Make sure interactivity is provided
+				self.yieldCurrentThread()
 
 		return files_list
 
@@ -271,6 +293,7 @@ class FileAnalysis(QThread):
 
 		"""
 		# Find files in directory
+		self.log_line.emit(LOG_TEXT_FINDING_FILES)
 		files_list = self._find_files()
 		# Calculate md5 hash on files to detect duplcates
 		files_db = self._build_file_compare_db(files_list)
