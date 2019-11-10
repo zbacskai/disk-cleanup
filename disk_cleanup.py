@@ -1,11 +1,40 @@
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QLineEdit, QFileDialog, QMainWindow, QTextEdit, QProgressBar
-from PyQt5.QtCore import QThread, QObject, pyqtSignal, pyqtSlot
+"""
+
+Disk Duplicate File Analysis Tool
+
+Author:
+
+		Zoltan Bacskai (z.bacskai.jr@gmail.com)
+
+		2019
+
+"""
+from PyQt5.QtWidgets import (
+	QApplication,
+	QWidget, 
+	QPushButton,
+	QVBoxLayout,
+	QHBoxLayout,
+	QLineEdit,
+	QFileDialog, 
+	QTextEdit, 
+	QProgressBar )
+from PyQt5.QtCore import (
+	QThread,
+	QObject,
+	pyqtSignal)
+
 import time
 from pathlib import Path
 import os
 import json
 import glob
 import hashlib
+
+BTN_CAPTION_SELECT_FILE    = 'Select File'
+BTN_CAPTION_SELECT_DIR     = 'Select Directory'
+BTN_CAPTION_START_ANALYSIS = 'Start Analysis'
+BTN_CAPTION_STOP_ANALYSIS  = 'Stop Analysis'
 
 
 CONF_FILE_NAME='.file_compare.json'
@@ -19,6 +48,9 @@ LOG_TEXT_FINISHED        = '\n------------------------------ FINISHED ----------
 LOG_TEXT_HASH            = 'Hash: %s'
 LOG_TEXT_TAB             = '    %s'
 LOG_TEXT_WARNING         = '\n WARNING: These files are 1-(2^-128) * 100 percent equal \n'
+
+WINDOW_TITLE_MAIN     = 'Find Duplicate Files'
+WINDOW_TITLE_ANALYSIS = 'Analysis'
 
 class Dbg(object):
 	"""
@@ -145,10 +177,12 @@ class AnalysisForm(QWidget):
  		self._layout.addWidget(self._progress_bar)
  		self._layout.addWidget(self._text_box)
  		self.setLayout(self._layout)
- 		self.setWindowTitle('Analysis')
+ 		self.setWindowTitle(WINDOW_TITLE_ANALYSIS)
 
 	def _setup_thread(self):
- 		self.thread = FileAnalysis(self, self._input_data_panel.compare_dir.text(), self._input_data_panel.project_file.text())
+ 		self.thread = FileAnalysis(self,
+ 								   self._input_data_panel.compare_dir.text(),
+ 								   self._input_data_panel.project_file.text())
  		self.thread.log_line.connect(self.handleLogLine)
  		self.thread.log_cmd.connect(self.handleLogCommand)
  		self.thread.set_proc_percent.connect(self.handleSetProcessedPercent)
@@ -231,14 +265,14 @@ class InputDataPanel(QWidget):
 
 	def _stop_analysis(self):
 		Dbg('Stop Analysis')
-		self._analysis_btn.setText('Start')
+		self._analysis_btn.setText(BTN_CAPTION_START_ANALYSIS)
 		self._running_analysis.close()
 		self._running_analysis = None
 		self._toggleInputFields(True)
 
 	def _start_analysis(self):
 		Dbg('Start Analysis')
-		self._analysis_btn.setText('Stop')
+		self._analysis_btn.setText(BTN_CAPTION_STOP_ANALYSIS)
 		self._running_analysis = AnalysisForm(self)
 		self._running_analysis.move(self.pos().x(), self.pos().y() + self.height() + 50)
 		self._running_analysis.resize(self.width() * 2, 300)
@@ -264,7 +298,7 @@ class InputDataPanel(QWidget):
 		self.compare_dir = QLineEdit()
 		compare_dir_layout.addWidget(self.compare_dir)
 		self.compare_dir.textChanged.connect(self._updateAnalysisButtonState)
-		self._open_dir_btn = QPushButton('Select Dir')
+		self._open_dir_btn = QPushButton(BTN_CAPTION_SELECT_DIR)
 		self._open_dir_btn.clicked.connect(self._select_compare_dir)
 		compare_dir_layout.addWidget(self._open_dir_btn)
 
@@ -272,11 +306,11 @@ class InputDataPanel(QWidget):
 		self.project_file = QLineEdit()
 		save_file_layout.addWidget(self.project_file)
 		self.project_file.textChanged.connect(self._updateAnalysisButtonState)
-		self._select_project_file_btn = QPushButton('Select File')
+		self._select_project_file_btn = QPushButton(BTN_CAPTION_SELECT_FILE)
 		self._select_project_file_btn.clicked.connect(self._select_project_file)
 		save_file_layout.addWidget(self._select_project_file_btn)
 
-		self._analysis_btn = QPushButton('Start')
+		self._analysis_btn = QPushButton(BTN_CAPTION_START_ANALYSIS)
 		self._analysis_btn.clicked.connect(self._analysis_clicked)
 		self._updateAnalysisButtonState()
 
@@ -285,21 +319,30 @@ class InputDataPanel(QWidget):
 		my_layout.addWidget(self._analysis_btn)
 		
 		self.setLayout(my_layout)
-		self.setWindowTitle("Duplicate File Find")
+		self.setWindowTitle(WINDOW_TITLE_MAIN)
 
 		self._running_analysis = None
 		self._load_config()
 
 class DiskCleanup(QApplication):
+	"""
+
+	Main Application Class
+
+	"""
 	def __init__(self):
 		super(DiskCleanup, self).__init__([])
 		self._input_data_panel = InputDataPanel()
 
 	def main(self):
+		"""
+
+		Main function
+
+		"""
 		self._input_data_panel.show()
 		self.exec_()
 
 if __name__ == '__main__':
-	home = str(Path.home())
 	fc = DiskCleanup()
 	fc.main()
