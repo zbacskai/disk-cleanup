@@ -6,12 +6,27 @@ import os
 import json
 import glob
 import hashlib
-import pprint
-from io import StringIO
+
 
 CONF_FILE_NAME='.file_compare.json'
 
-class FileDescr(object):
+HASH_CALC_CHUNK_SIZE = 4096
+
+LOG_CMD_CLEAR            = 'CLEAR'
+LOG_TEXT_ANALYZING_FILE  = 'Analyzing: %s'
+LOG_TEXT_CALCULATED_HASH = 'Calculated Hash: %s'
+LOG_TEXT_FINISHED        = '------------------ FINIDHED ---------------'
+LOG_TEXT_HASH            = 'Hash: %s'
+LOG_TEXT_TAB             = '    %s'
+LOG_TEXT_WARNING         = 'WARNING: These files are 1-(2^-128) * 100 percent equal'
+
+class FileRecord(object):
+	"""
+
+	File Record. Filled to hold file size and path info during
+	analysis of the disk
+
+	"""
 	def __init__(self, path):
 		self.path = path
 		self.size = os.path.getsize(path)
@@ -28,61 +43,76 @@ class FileAnalysis(QThread):
 		self._processed_bytes = 0
 		self._total_bytes = 0;
 
-	def get_processed_percent(self):
+	def _get_processed_percent(self):
 		return int(self._processed_bytes * 100 / self._total_bytes)
 
-	def get_hash(self, file_name):
+	def _get_hash(self, file_name):
 		m = hashlib.md5()
 		psave = self._processed_bytes
 		with open(file_name, 'rb') as f:
-			for chunk in iter(lambda: f.read(4096), b""):
+			for chunk in iter(lambda: f.read(HASH_CALC_CHUNK_SIZE), b""):
 				m.update(chunk)
 				self._processed_bytes+=len(chunk)
-				self.set_proc_percent.emit(self.get_processed_percent())
+				self.set_proc_percent.emit(self._get_processed_percent())
 				self.yieldCurrentThread()
 
 		self._processed_bytes = psave
 
 		return str(m.hexdigest())
 
-	def run(self): # A slot takes no params
+	def _find_files(self):
 		fname = os.path.join(self._idir, '**')
 		files_list = []
 		for f in glob.glob(fname, recursive=True):
 			if os.path.isfile(f):
-				filed = FileDescr(f)
+				filed = FileRecord(f)
 				files_list.append(filed)
 				self._total_bytes+=filed.size
 
-		files_stat = {}
+		return files_list
+
+	def _build_file_compare_db(self, files_list):
+		files_db = {}
 		for filed in files_list:
-			print('Completed: ' + str(self.get_processed_percent()))
-			self.log_line.emit('Analyzing: %s' % str(filed.path))
-			file_hash = self.get_hash(filed.path)
+			self.log_line.emit(LOG_TEXT_ANALYZING_FILE % str(filed.path))
+			file_hash = self._get_hash(filed.path)
 			
 			fh_key = str(file_hash)
-			self.log_line.emit('Calculated Hash: %s' % fh_key)
-			flist = files_stat.get(fh_key, [])
+			self.log_line.emit(LOG_TEXT_CALCULATED_HASH % fh_key)
+			flist = files_db.get(fh_key, [])
 			flist.append(str(filed.path)) 
-			files_stat[fh_key] = flist
+			files_db[fh_key] = flist
 			
 			self._processed_bytes+=filed.size
-			self.set_proc_percent.emit(self.get_processed_percent())
+			self.set_proc_percent.emit(self._get_processed_percent())
 
-		self.log_cmd.emit("CLEAR")
-		self.log_line.emit("------------------ FINIDHED ---------------")
-		self.log_line.emit("WARNING: These files are 1-(2^-128) * 100 \% equal")
+		return files_db;
 
+	def _generate_duplicate_report(self, files_db):
 		dup_files = {}
-		for key in files_stat.keys():
-			if len(files_stat[key]) > 1:
-				self.log_line.emit('Hash: %s' %key)
-				dup_files[key] = files_stat[key]
-				for filename in files_stat[key]:
-					self.log_line.emit('    %s' % filename)
+		for key, file_list in files_db.items():
+			if len(file_list) > 1:
+				self.log_line.emit(LOG_TEXT_HASH %key)
+				dup_files[key] = file_list
+				for filename in file_list:
+					self.log_line.emit(LOG_TEXT_TAB % filename)
 
+		return dup_files
+
+	def _save_duplicate_files_report(self, duplicate_files):
 		with open(self._ofile, 'w') as fp:
-			json.dump(dup_files, fp, indent=4, sort_keys=True)
+			json.dump(duplicate_files, fp, indent=4, sort_keys=True)
+	
+	def run(self):
+		files_list = self._find_files()
+		files_db = self._build_file_compare_db(files_list)
+		
+		self.log_cmd.emit(LOG_CMD_CLEAR)
+		self.log_line.emit(LOG_TEXT_FINISHED)
+		self.log_line.emit(LOG_TEXT_WARNING)
+
+		dup_files_report = self._generate_duplicate_report(files_db)
+		self._save_duplicate_files_report(dup_files_report)
 
 		while True:
 			time.sleep(1.0)
@@ -117,7 +147,7 @@ class AnalysisForm(QWidget):
  		self._text_box.append(log_line)
 
  	def handleLogCommand(self, log_command):
- 		if (log_command == "CLEAR"):
+ 		if (log_command == LOG_CMD_CLEAR):
  			self._text_box.clear()
  		else:
  			print ("Invalid log command")
