@@ -6,6 +6,8 @@ import os
 import json
 import glob
 import hashlib
+import pprint
+from io import StringIO
 
 CONF_FILE_NAME='.file_compare.json'
 
@@ -16,6 +18,7 @@ class FileDescr(object):
 
 class FileAnalysis(QThread):
 	log_line = pyqtSignal(str)
+	log_cmd = pyqtSignal(str)
 	set_proc_percent = pyqtSignal(int)
 
 	def __init__(self, parent, idir, ofile):
@@ -43,7 +46,6 @@ class FileAnalysis(QThread):
 		return str(m.hexdigest())
 
 	def run(self): # A slot takes no params
-		files_stat = {}
 		fname = os.path.join(self._idir, '**')
 		files_list = []
 		for f in glob.glob(fname, recursive=True):
@@ -52,23 +54,35 @@ class FileAnalysis(QThread):
 				files_list.append(filed)
 				self._total_bytes+=filed.size
 
+		files_stat = {}
 		for filed in files_list:
 			print('Completed: ' + str(self.get_processed_percent()))
 			self.log_line.emit('Analyzing: %s' % str(filed.path))
 			file_hash = self.get_hash(filed.path)
+			
 			fh_key = str(file_hash)
 			self.log_line.emit('Calculated Hash: %s' % fh_key)
 			flist = files_stat.get(fh_key, [])
-			flist.append(str(f)) 
+			flist.append(str(filed.path)) 
 			files_stat[fh_key] = flist
+			
 			self._processed_bytes+=filed.size
 			self.set_proc_percent.emit(self.get_processed_percent())
 
+		self.log_cmd.emit("CLEAR")
 		self.log_line.emit("------------------ FINIDHED ---------------")
+		self.log_line.emit("WARNING: These files are 1-(2^-128) * 100 \% equal")
 
+		dup_files = {}
 		for key in files_stat.keys():
 			if len(files_stat[key]) > 1:
-				self.log_line.emit('|> %s <|' % str(files_stat[key]))
+				self.log_line.emit('Hash: %s' %key)
+				dup_files[key] = files_stat[key]
+				for filename in files_stat[key]:
+					self.log_line.emit('    %s' % filename)
+
+		with open(self._ofile, 'w') as fp:
+			json.dump(dup_files, fp, indent=4, sort_keys=True)
 
 		while True:
 			time.sleep(1.0)
@@ -89,9 +103,11 @@ class AnalysisForm(QWidget):
  		self._layout.addWidget(self._progress_bar)
  		self._layout.addWidget(self._text_box)
  		self.setLayout(self._layout)
+ 		self.setWindowTitle('Analysis')
 
  		self.thread = FileAnalysis(self, input_data_panel.compare_dir.text(), input_data_panel.project_file.text())
  		self.thread.log_line.connect(self.handleLogLine)
+ 		self.thread.log_cmd.connect(self.handleLogCommand)
  		self.thread.set_proc_percent.connect(self.handleSetProcessedPercent)
  		self.thread.finished.connect(self.close)
 
@@ -99,6 +115,12 @@ class AnalysisForm(QWidget):
 
  	def handleLogLine(self, log_line):
  		self._text_box.append(log_line)
+
+ 	def handleLogCommand(self, log_command):
+ 		if (log_command == "CLEAR"):
+ 			self._text_box.clear()
+ 		else:
+ 			print ("Invalid log command")
 
  	def handleSetProcessedPercent(self, processed_percent):
  		self._progress_bar.setValue(processed_percent)
