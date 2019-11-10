@@ -15,10 +15,22 @@ HASH_CALC_CHUNK_SIZE = 4096
 LOG_CMD_CLEAR            = 'CLEAR'
 LOG_TEXT_ANALYZING_FILE  = 'Analyzing: %s'
 LOG_TEXT_CALCULATED_HASH = 'Calculated Hash: %s'
-LOG_TEXT_FINISHED        = '------------------ FINIDHED ---------------'
+LOG_TEXT_FINISHED        = '\n------------------------------ FINISHED -------------------------------\n'
 LOG_TEXT_HASH            = 'Hash: %s'
 LOG_TEXT_TAB             = '    %s'
-LOG_TEXT_WARNING         = 'WARNING: These files are 1-(2^-128) * 100 percent equal'
+LOG_TEXT_WARNING         = '\n WARNING: These files are 1-(2^-128) * 100 percent equal \n'
+
+class Dbg(object):
+	"""
+
+	Wrapper class around debug linies
+
+	"""
+	def __init__(self, dbg_msg):
+		self._dbg_msg = dbg_msg
+
+	def __del__(self):
+		print(self._dbg_msg)
 
 class FileRecord(object):
 	"""
@@ -58,12 +70,15 @@ class FileAnalysis(QThread):
 
 		self._processed_bytes = psave
 
-		return str(m.hexdigest())
+		return m.hexdigest()
 
 	def _find_files(self):
 		fname = os.path.join(self._idir, '**')
 		files_list = []
 		for f in glob.glob(fname, recursive=True):
+			if os.path.islink(f):
+				continue
+
 			if os.path.isfile(f):
 				filed = FileRecord(f)
 				files_list.append(filed)
@@ -121,10 +136,7 @@ class FileAnalysis(QThread):
 		self.terminate()
 
 class AnalysisForm(QWidget):
- 	def __init__(self, input_data_panel, parent=None):
- 		super(AnalysisForm, self).__init__(parent)
-
- 		self._input_data_panel = input_data_panel
+	def _setup_form(self):
  		self._layout = QVBoxLayout()
  		self._progress_bar = QProgressBar()
  		self._text_box = QTextEdit()
@@ -135,27 +147,33 @@ class AnalysisForm(QWidget):
  		self.setLayout(self._layout)
  		self.setWindowTitle('Analysis')
 
- 		self.thread = FileAnalysis(self, input_data_panel.compare_dir.text(), input_data_panel.project_file.text())
+	def _setup_thread(self):
+ 		self.thread = FileAnalysis(self, self._input_data_panel.compare_dir.text(), self._input_data_panel.project_file.text())
  		self.thread.log_line.connect(self.handleLogLine)
  		self.thread.log_cmd.connect(self.handleLogCommand)
  		self.thread.set_proc_percent.connect(self.handleSetProcessedPercent)
  		self.thread.finished.connect(self.close)
 
+	def __init__(self, input_data_panel, parent=None):
+ 		super(AnalysisForm, self).__init__(parent)
+ 		self._input_data_panel = input_data_panel
+ 		self._setup_form()
+ 		self._setup_thread()
  		self.thread.start()
 
- 	def handleLogLine(self, log_line):
+	def handleLogLine(self, log_line):
  		self._text_box.append(log_line)
 
- 	def handleLogCommand(self, log_command):
+	def handleLogCommand(self, log_command):
  		if (log_command == LOG_CMD_CLEAR):
  			self._text_box.clear()
  		else:
- 			print ("Invalid log command")
+ 			Dbg('Invalid log command')
 
- 	def handleSetProcessedPercent(self, processed_percent):
+	def handleSetProcessedPercent(self, processed_percent):
  		self._progress_bar.setValue(processed_percent)
 
- 	def closeEvent(self, event):
+	def closeEvent(self, event):
  		self.thread.stop()
  		self.thread = None
  		event.accept()
@@ -196,37 +214,34 @@ class InputDataPanel(QWidget):
 		self._open_dir_btn.setEnabled(enabled)
 
 	def _select_compare_dir(self):
-		print ("Select directory to compare files")
+		Dbg ("Select directory to compare files")
 		options = QFileDialog.Options()
 		options |= QFileDialog.DontUseNativeDialog
 		options |= QFileDialog.ShowDirsOnly
 		dirName = QFileDialog.getExistingDirectory(self,"QFileDialog.getCompareDir", "", options=options)      
-		if dirName:
-			print(dirName)
 
 		self.compare_dir.setText(dirName)
 
 	def _select_project_file(self):
 		options = QFileDialog.Options()
 		options |= QFileDialog.DontUseNativeDialog
-		fileName, _ = QFileDialog.getSaveFileName(self,"QFileDialog.getOpenFileName()", "","All Files (*)", options=options)      
-		if fileName:
-			print(fileName)
+		file_name, _ = QFileDialog.getSaveFileName(self,"QFileDialog.getOpenFileName()", "","Json Files (*json)", options=options)      
 
-		self.project_file.setText(fileName)
+		self.project_file.setText(file_name if file_name.endswith('.json') else file_name + '.json')
 
 	def _stop_analysis(self):
-		print ('Stop Analysis')
+		Dbg('Stop Analysis')
 		self._analysis_btn.setText('Start')
 		self._running_analysis.close()
 		self._running_analysis = None
 		self._toggleInputFields(True)
 
 	def _start_analysis(self):
-		print ('Start Analysis')
+		Dbg('Start Analysis')
 		self._analysis_btn.setText('Stop')
 		self._running_analysis = AnalysisForm(self)
-		self._running_analysis.move(300, 300)
+		self._running_analysis.move(self.pos().x(), self.pos().y() + self.height() + 50)
+		self._running_analysis.resize(self.width() * 2, 300)
 		self._running_analysis.show()
 		self._toggleInputFields(False)
 
@@ -286,7 +301,5 @@ class DiskCleanup(QApplication):
 
 if __name__ == '__main__':
 	home = str(Path.home())
-	print (home)
 	fc = DiskCleanup()
 	fc.main()
-
