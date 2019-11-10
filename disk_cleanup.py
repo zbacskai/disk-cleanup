@@ -177,7 +177,7 @@ class FileAnalysis(QThread):
 					self.yieldCurrentThread()
 		except Exception as e:
 			# TODO: Add proper exception handling. Error pop-up window
-			Dbg('Erro processing file: %s', file_name)
+			Dbg('Erro processing file: %s' % file_name)
 
 		"""
 		 
