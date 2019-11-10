@@ -284,7 +284,7 @@ class FileAnalysis(QThread):
 				json.dump(duplicate_files, fp, indent=4, sort_keys=True)
 		except Exception as e:
 			#TODO: implement proper error handling
-			Dbug('Error saving output file: %s' % self._ofile)
+			Dbg('Error saving output file: %s' % self._ofile)
 	
 	def run(self):
 		"""
@@ -435,7 +435,7 @@ class InputDataPanel(QWidget):
 				self._config = json.load(fp)
 		except Exception as e:
 			# TODO: Add better execption handling
-			Dbug('Failed to read user-config file.')
+			Dbg('Failed to read user-config file.')
 		
 		#Set Panel based on config, or default values if no config exists
 		self.move(self._config.get(CONF_FLD_POS_X, 100), 
@@ -465,7 +465,7 @@ class InputDataPanel(QWidget):
 			with open(conf_file, 'w') as fp:
 				json.dump(self._config, fp)
 		except Exception as e:
-			Dbug('Failed to save user information.')
+			Dbg('Failed to save user information.')
 	
 	def _update_analysis_button_state(self):
 		"""
