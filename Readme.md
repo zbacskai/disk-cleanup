@@ -23,13 +23,13 @@ For Linux:
 
      you can install by executing: sudo apt-get install python3
 
-###Further Requirement
+### Further Requirement
 
 Software is based on PyQt5. So PyQt5 has to be installed:
 
 python -m pip install PyQt5
 
-##Running the code
+## Running the code
 
 If python3 is installed, you can launch the app by running start.bat (Windows) or start.sh (Linux) It shall set up virtual environment and install PyQt5
 
