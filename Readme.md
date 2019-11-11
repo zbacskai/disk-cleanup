@@ -27,7 +27,7 @@ For Linux:
 
 Software is based on PyQt5. So PyQt5 has to be installed:
 
-python -m pip install PyQt5
+    python -m pip install PyQt5
 
 ## Running the code
 
@@ -35,8 +35,8 @@ If python3 is installed, you can launch the app by running start.bat (Windows) o
 
 If the script fails or you are in a more adventorous mood, assuming that PyQt5 was installed it can be also launched by executing:
 
-python disk_cleanup.py
+    python disk_cleanup.py
 
 or
 
-python3 disk_cleanup.py (sometimes on Linux)
+    python3 disk_cleanup.py (sometimes on Linux)
