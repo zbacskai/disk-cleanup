@@ -30,6 +30,7 @@ import os
 import json
 import hashlib
 import pathlib
+import platform
 
 BTN_CAPTION_SELECT_FILE    = 'Select File'
 BTN_CAPTION_SELECT_DIR     = 'Select Directory'
@@ -308,7 +309,12 @@ class FileAnalysis(QThread):
 		self._save_duplicate_files_report(dup_files_report)
 
 	def stop(self):
-		self.terminate()
+		if platform.system() == 'Linux':
+			self.quit()
+		else:
+			self.terminate()
+			
+		self.wait()
 
 class AnalysisForm(QWidget):
 	"""
@@ -408,7 +414,6 @@ class AnalysisForm(QWidget):
 
 	def __del__(self):
 		self.thread.stop()
-		self.thread.wait(5)
 
 class InputDataPanel(QWidget):
 	"""
