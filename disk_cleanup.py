@@ -94,14 +94,15 @@ def alliter(p):
 
 	"""
 	yield p
-	try:
-		for sub in p.iterdir():
+	for sub in p.iterdir():
+		try:
 			if sub.is_dir():
 				yield from alliter(sub)
 			else:
 				yield sub
-	except Exception as e:
-		Dbg("Error processing file")
+		except Exception as e:
+			Dbg("Error processing file " + str(e))
+			continue
 
 class FileAnalysis(QThread):
 	"""
@@ -199,18 +200,16 @@ class FileAnalysis(QThread):
 		fname = os.path.join(self._idir, '**')
 		files_list = []
 		for f in alliter(pathlib.Path(self._idir)):
-			# No support for symlinks yet
-			if os.path.islink(f):
-				continue
-
 			# Check if file found, as glob will mention directories too
-			if os.path.isfile(f):
+			if os.path.isfile(f) and not os.path.islink(f):
 				self.log_line.emit(LOG_TEXT_FILE_FOUND % f)
 				filed = FileRecord(f)
 				files_list.append(filed)
 				self._total_bytes+=filed.size
-				# Make sure interactivity is provided
-				self.yieldCurrentThread()
+			
+			# Make sure interactivity is provided
+			self.yieldCurrentThread()
+
 
 		return files_list
 
@@ -309,7 +308,7 @@ class FileAnalysis(QThread):
 		self._save_duplicate_files_report(dup_files_report)
 
 	def stop(self):
-		self.quit()
+		self.terminate()
 
 class AnalysisForm(QWidget):
 	"""
@@ -409,7 +408,7 @@ class AnalysisForm(QWidget):
 
 	def __del__(self):
 		self.thread.stop()
-		self.thread.wait()
+		self.thread.wait(5)
 
 class InputDataPanel(QWidget):
 	"""
