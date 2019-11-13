@@ -565,6 +565,7 @@ class InputDataPanel(QWidget):
 
 		"""
 		self._save_config()
+		self._stop_analysis()
 		event.accept()
 
 	def __init__(self, parent = None):
