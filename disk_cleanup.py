@@ -308,12 +308,8 @@ class FileAnalysis(QThread):
 		# Save duplicated files into JSON file
 		self._save_duplicate_files_report(dup_files_report)
 
-		# Keep thread running until form is closed by user
-		while True:
-			time.sleep(1.0)
-
 	def stop(self):
-		self.terminate()
+		self.quit()
 
 class AnalysisForm(QWidget):
 	"""
@@ -350,7 +346,6 @@ class AnalysisForm(QWidget):
 		self.thread.log_line.connect(self.handle_log_line)
 		self.thread.log_cmd.connect(self.handle_log_command)
 		self.thread.set_proc_percent.connect(self.handle_set_processed_percent)
-		self.thread.finished.connect(self.close)
 
 	def __init__(self, input_data_panel, parent=None):
 		"""
@@ -408,11 +403,13 @@ class AnalysisForm(QWidget):
 		top of the panel the analysis thread has to be interrupted.
 
 		"""
-		self.thread.stop()
-		self.thread = None
 		event.accept()
 		# Set the main panel button back to "Stop Analysis"
-		self._input_data_panel._stop_analysis()
+		self._input_data_panel._stop_analysis(close_panel=False)
+
+	def __del__(self):
+		self.thread.stop()
+		self.thread.wait()
 
 class InputDataPanel(QWidget):
 	"""
@@ -521,7 +518,7 @@ class InputDataPanel(QWidget):
 		self.project_file.setText(
 			file_name if file_name.endswith('.json') else file_name + '.json')
 
-	def _stop_analysis(self):
+	def _stop_analysis(self, close_panel=True):
 		"""
 
 		Function to stop the analysis
@@ -529,8 +526,9 @@ class InputDataPanel(QWidget):
 		"""
 		Dbg('Stop Analysis')
 		self._analysis_btn.setText(BTN_CAPTION_START_ANALYSIS)
-		self._running_analysis.close()
-		self._running_analysis = None
+		if close_panel:
+			self._running_analysis.close()
+			self._running_analysis = None
 		self._toggle_input_fields(True)
 
 	def _start_analysis(self):
