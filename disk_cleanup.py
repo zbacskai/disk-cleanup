@@ -103,7 +103,7 @@ def alliter(p):
 				yield sub
 		except Exception as e:
 			Dbg("Error processing file " + str(e))
-			continue
+			yield None
 
 class FileAnalysis(QThread):
 	"""
@@ -135,6 +135,7 @@ class FileAnalysis(QThread):
 		self._processed_bytes = 0
 		# total amount of bytes to be processed
 		self._total_bytes = 0;
+		self.setTerminationEnabled(True)
 
 	def _get_processed_percent(self):
 		"""
@@ -198,11 +199,10 @@ class FileAnalysis(QThread):
 		progess bar can be calculated.
 
 		"""
-		fname = os.path.join(self._idir, '**')
 		files_list = []
 		for f in alliter(pathlib.Path(self._idir)):
 			# Check if file found, as glob will mention directories too
-			if os.path.isfile(f) and not os.path.islink(f):
+			if f is not None and os.path.isfile(f) and not os.path.islink(f):
 				self.log_line.emit(LOG_TEXT_FILE_FOUND % f)
 				filed = FileRecord(f)
 				files_list.append(filed)
