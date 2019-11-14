@@ -30,7 +30,6 @@ import os
 import json
 import hashlib
 import pathlib
-import platform
 
 BTN_CAPTION_SELECT_FILE    = 'Select File'
 BTN_CAPTION_SELECT_DIR     = 'Select Directory'
@@ -545,10 +544,11 @@ class InputDataPanel(QWidget):
 		Dbg('Stop Analysis')
 		self._analysis_btn.setText(BTN_CAPTION_START_ANALYSIS)
 		self._toggle_input_fields(True)
-		if close_panel:
+		if close_panel and self._running_analysis is not None:
 			self._running_analysis.close()
-		self._running_analysis = None
 
+		self._is_in_analysis = False
+		
 	def _start_analysis(self):
 		"""
 
@@ -558,6 +558,7 @@ class InputDataPanel(QWidget):
 		Dbg('Start Analysis')
 		self._analysis_btn.setText(BTN_CAPTION_STOP_ANALYSIS)
 		self._running_analysis = AnalysisForm(self)
+		self._is_in_analysis = True
 		# Set position of Analysis form relative to our pos
 		self._running_analysis.move(self.pos().x(),
 									self.pos().y() + self.height() + 50)
@@ -571,10 +572,10 @@ class InputDataPanel(QWidget):
 		Handler function of Analysis button clicked
 
 		"""
-		if self._running_analysis is None:
-			self._start_analysis()	
+		if self._is_in_analysis:
+			self._stop_analysis()	
 		else:
-			self._stop_analysis()
+			self._start_analysis()
 
 	def closeEvent(self, event):
 		"""
@@ -624,6 +625,7 @@ class InputDataPanel(QWidget):
 		self.setWindowTitle(WINDOW_TITLE_MAIN)
 
 		self._running_analysis = None
+		self._is_in_analysis = False
 		self._load_config()
 
 class DiskCleanup(QApplication):
