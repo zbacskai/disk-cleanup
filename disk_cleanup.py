@@ -87,24 +87,6 @@ class FileRecord(object):
 		self.path = path
 		self.size = os.path.getsize(path)
 
-def alliter(p):
-	"""
-
-	Helper function to iterate over Pathlib strctures while
-	providing interactivity
-
-	"""
-	yield p
-	for sub in p.iterdir():
-		try:
-			if sub.is_dir():
-				yield from alliter(sub)
-			else:
-				yield sub
-		except Exception as e:
-			Dbg("Error processing file " + str(e))
-			yield None
-
 class FileAnalysis(QThread):
 	"""
 
@@ -135,7 +117,7 @@ class FileAnalysis(QThread):
 		self._processed_bytes = 0
 		# total amount of bytes to be processed
 		self._total_bytes = 0;
-		self.setTerminationEnabled(True)
+		self._run = True
 
 	def _get_processed_percent(self):
 		"""
@@ -171,6 +153,9 @@ class FileAnalysis(QThread):
 			with open(file_name, 'rb') as f:
 				# read the file in 4K chunks
 				for chunk in iter(lambda: f.read(HASH_CALC_CHUNK_SIZE), b""):
+					if not self._run:
+						break
+						
 					m.update(chunk)
 					# update processed_bytes
 					self._processed_bytes+=len(chunk)
@@ -192,6 +177,28 @@ class FileAnalysis(QThread):
 
 		return m.hexdigest()
 
+	def _iter_files(self, p):
+		"""
+
+		Helper function to iterate over Pathlib strctures while
+		providing interactivity
+
+		"""
+		yield p
+		if p is not None:
+			for sub in p.iterdir():
+				if not self._run:
+					break
+
+				try:
+					if sub.is_dir():
+						yield from self._iter_files(sub)
+					else:
+						yield sub
+				except Exception as e:
+					Dbg("Error processing file " + str(e))
+					yield None
+
 	def _find_files(self):
 		"""
 
@@ -200,7 +207,11 @@ class FileAnalysis(QThread):
 
 		"""
 		files_list = []
-		for f in alliter(pathlib.Path(self._idir)):
+		for f in self._iter_files(pathlib.Path(self._idir)):
+			
+			if not self._run:
+				break
+
 			# Check if file found, as glob will mention directories too
 			if f is not None and os.path.isfile(f) and not os.path.islink(f):
 				self.log_line.emit(LOG_TEXT_FILE_FOUND % f)
@@ -232,6 +243,9 @@ class FileAnalysis(QThread):
 		"""
 		files_db = {}
 		for filed in files_list:
+			if not self._run:
+				break
+
 			self.log_line.emit(LOG_TEXT_ANALYZING_FILE % str(filed.path))
 			
 			fh_key = self._get_hash(filed.path)
@@ -259,6 +273,9 @@ class FileAnalysis(QThread):
 		"""
 		dup_files = {}
 		for key, file_list in files_db.items():
+			if not self._run:
+				break
+
 			# If more than 1 file in the list then there are duplicates
 			if len(file_list) > 1:
 				self.log_line.emit(LOG_TEXT_HASH %key)
@@ -308,14 +325,9 @@ class FileAnalysis(QThread):
 		# Save duplicated files into JSON file
 		self._save_duplicate_files_report(dup_files_report)
 
-	def stop(self):
-		if platform.system() == 'Linux':
-			self.quit()
-		else:
-			self.terminate()
-			
-		self.wait()
-
+	def handle_stop(self):
+		self._run = False
+		
 class AnalysisForm(QWidget):
 	"""
 
@@ -323,6 +335,8 @@ class AnalysisForm(QWidget):
 	status of the file report
 
 	"""
+	thread_stop = pyqtSignal()
+
 	def _setup_form(self):
 		"""
 
@@ -351,6 +365,7 @@ class AnalysisForm(QWidget):
 		self.thread.log_line.connect(self.handle_log_line)
 		self.thread.log_cmd.connect(self.handle_log_command)
 		self.thread.set_proc_percent.connect(self.handle_set_processed_percent)
+		self.thread_stop.connect(self.thread.handle_stop)
 
 	def __init__(self, input_data_panel, parent=None):
 		"""
@@ -408,12 +423,11 @@ class AnalysisForm(QWidget):
 		top of the panel the analysis thread has to be interrupted.
 
 		"""
-		event.accept()
 		# Set the main panel button back to "Stop Analysis"
 		self._input_data_panel._stop_analysis(close_panel=False)
-
-	def __del__(self):
-		self.thread.stop()
+		self.thread_stop.emit()
+		self.thread.wait()
+		event.accept()
 
 class InputDataPanel(QWidget):
 	"""
@@ -530,10 +544,10 @@ class InputDataPanel(QWidget):
 		"""
 		Dbg('Stop Analysis')
 		self._analysis_btn.setText(BTN_CAPTION_START_ANALYSIS)
+		self._toggle_input_fields(True)
 		if close_panel:
 			self._running_analysis.close()
-			self._running_analysis = None
-		self._toggle_input_fields(True)
+		self._running_analysis = None
 
 	def _start_analysis(self):
 		"""
